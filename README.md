@@ -2,7 +2,7 @@
 
 This is a nagios plugin which you can use to check if a CRL (Certificate Revocation List, public list with revoked certificates) is still valid. This is based on the check_crl.py plugin from [Michele Baldessari](http://acksyn.org/?p=690). I've modified it so that it checks the time in hours (for more precision) instead of days, and I've added error handling so that if the plugin cannot get a crl file (because the webserver is down) it gives a Critical error in nagios.
 
-[Raymii.org](https://raymii.org)
+[Page on Raymii.org](https://raymii.org/cms/p_Nagios_plugin_to_check_crl_expiry_in_hours)
 
 #### Download
 
