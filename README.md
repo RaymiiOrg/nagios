@@ -6,10 +6,10 @@ This is a nagios plugin which you can use to check if a CRL (Certificate Revocat
 
 #### Download
 
-[Download the plugin from my github](https://raw.github.com/RaymiiOrg/nagios/master/check_crl.py)
-[Download the plugin from raymii.org](https://raymii.org/cms/content/downloads/check_crl.py)
-[View the source code in the browser](https://raymii.org/cms/content/downloads/check_crl.py.txt)
-
+[Download the plugin from my github](https://raw.github.com/RaymiiOrg/nagios/master/check_crl.py)  
+[Download the plugin from raymii.org](https://raymii.org/cms/content/downloads/check_crl.py)  
+[View the source code in the browser](https://raymii.org/cms/content/downloads/check_crl.py.txt)  
+   
 #### Install and Usage
 
 This guide covers the steps needed for Ubuntu 10.04/12.04 and Debian 6. It should also work on other distro's, but make sure to modify the commands where needed. 
