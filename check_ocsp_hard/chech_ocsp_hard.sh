@@ -20,10 +20,83 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
+# Adapated by palli@opensource.is at 2013-05-02
+# * Certificates changed
+# * Added argument -H 
 
-OCSPURL="http://ocsp.comodoca.com/"
-CERTCN="raymii.org"
-# Certificate from raymii.org as on 08-NOV-2012
+OK=0
+WARNING=1
+CRITICAL=2
+UNKNOWN=3
+HOSTNAME=localhost # by default check localhost
+PORT=80 # default port is 80
+
+# Parse arguments
+while [ $# -gt 0 ]
+do
+  case $1
+  in
+    -h)
+      print_help
+      shift 1
+        exit $OK
+    ;;
+
+    --help)
+        print_help
+        shift 1
+        exit $OK
+    ;;
+    -H)
+      HOSTNAME=$2
+      shift 2
+    ;;
+    -P)
+      PORT=$2
+      shift 2
+    ;;
+    --cert)
+      CERT=$2
+      shift 2
+    ;;
+    --issuer)
+      ISSUER=$2
+      shift 2
+    ;;
+    --noverify)
+      OPTIONS="$OPTIONS -noverify"
+      shift 1
+    ;;
+    --max-age)
+      OPTIONS="$OPTIONS -status_age $2"
+      shift 2
+    ;;
+    --verbose)
+      VERBOSE=yes
+      shift 1
+    ;;
+    *)
+        echo "Invalid parameter: $1"
+        print_help
+        exit $UNKNOWN
+    ;;
+  esac
+done
+
+
+print_help() {
+      echo "$0 version $VERSION"
+      echo "This Plugin checks if a remote OCSP server and see if it validates our certificate"
+      echo ""
+      echo "Usage: $0 [--help] [-H host_name] [--cert filename.cer] [--issuer filename.cer] [--noverify] [--max-age AGE]"
+      echo ""
+}
+
+
+
+OCSPURL="http://$HOSTNAME"
+CERTCN="michal.cert"
+# 
 CERTTOCHECK='-----BEGIN CERTIFICATE-----
 MIIE6TCCA9GgAwIBAgIRAMGj2NANcvzkg82EdZ6ewLwwDQYJKoZIhvcNAQEFBQAw
 czELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
@@ -84,70 +157,100 @@ uuGtm87fM04wO+mPZn+C+mv626PAcwDj1hKvTfIPWhRRH224hoFiB85ccsJP81cq
 cdnUl4XmGFO3
 -----END CERTIFICATE-----'
 
-
-if [[ ! -f /tmp/$$.issuer.pem ]]; then
-    echo "$ISSUERCERT" > /tmp/$$.issuer.pem
-else
-    echo "CRITICAL: cannot write issuer certificate to /tmp/$$.issuer.pem"
-    exit 2
+# If no cert was specified, we use the one that is hardcoded
+# in the script
+if [ -z $CERT ]; then
+  CERT=`mktemp`
+  echo "$CERTTOCHECK" > $CERT
+  trap "rm -f $CERT" EXIT
 fi
 
-if [[ ! -f /tmp/$$.certificatetocheck.pem ]]; then
-    echo "$CERTTOCHECK" > /tmp/$$.certificatetocheck.pem
-else
-    echo "CRITICAL: cannot write certificate to /tmp/$$.certificatetocheck.pem"
-    exit 2
+if [ -z $ISSUER ]; then
+  ISSUER=`mktemp`
+  echo "$ISSUERCERT" > $ISSUER
+  trap "rm -f $ISSUER" EXIT
 fi
 
-OCSPRESPONSE=$(openssl ocsp -nonce -issuer /tmp/$$.issuer.pem -cert /tmp/$$.certificatetocheck.pem -url "$OCSPURL" 2>&1)
-if [[ $? -ne 0 ]]; then
+if [ ! -f "$CERT" ]; then
+	echo "Certificate to check not found: $CERT"
+	exit $UNKNOWN
+fi
+
+if [ ! -f "$ISSUER" ]; then
+	echo "Issuer certificate not found: $ISSUER"
+	exit $UNKNOWN
+fi
+
+OPENSSL_COMMAND="openssl ocsp $OPTIONS -nonce -issuer $ISSUER -cert $CERT -url "$OCSPURL" 2>&1"
+if [ ! -z $VERBOSE ]; then
+  echo "DEBUG: Executing: $OPENSSL_COMMAND"
+fi
+
+
+OCSPRESPONSE=$($OPENSSL_COMMAND)
+RESULT=$?
+if [[ $RESULT -ne 0 ]]; then
     if [[ "$OCSPRESPONSE" =~ "OCSP_parse_url:error parsing url" ]]; then
         echo "CRITICAL: OCSP URL parse error."
-        exit 2
+        echo $OCSPRESPONSE
+        exit $CRITICAL
     fi
     if [[ "$OCSPRESPONSE" =~ "Connection refused" ]]; then
         echo "CRITICAL: OCSP refused connection."
-        exit 2
+        echo $OCSPRESPONSE
+        exit $CRITICAL
     fi
     if [[ "$OCSPRESPONSE" =~ "Code=404" ]]; then
         echo "CRITICAL: OCSP returns HTTP error 404 (Not Found)."
-        exit 2
+        echo $OCSPRESPONSE
+        exit $CRITICAL
     fi
     echo -n "CRITICAL: OCSP check FAILED for OCSP: ${OCSPURL}. " 
-    exit 2
-fi
-
-if [[ -f /tmp/$$.issuer.pem ]]; then
-    rm /tmp/$$.issuer.pem
-fi
-
-if [[ -f /tmp/$$.certificatetocheck.pem ]]; then
-    rm /tmp/$$.certificatetocheck.pem
+    echo $OCSPRESPONSE
+    exit $CRITICAL
 fi
 
 echo "$OCSPRESPONSE" | grep -q ": revoked"
 if [[ $? -eq 0 ]]; then
 
     echo -n "CRITICAL: certificate for ${CERTCN} REVOKED by OCSP: ${OCSPURL} " 
-    exit 2
+    echo $OCSPRESPONSE
+    exit $CRITICAL
 fi
 
 echo "$OCSPRESPONSE" | grep -q ": unknown"
 if [[ $? -eq 0 ]]; then
     echo -n "WARNING: status of certificate for ${CERTCN} UNKNOWN by OCSP: ${OCSPURL} " 
+    echo $OCSPRESPONSE
     exit 1
+fi
+
+echo "$OCSPRESPONSE" | grep -q "WARNING"
+if [[ $? -eq 0 ]]; then
+    echo -n "WARNING received from ${OCSPURL}: $OCSPRESPONSE" 
+    exit $WARNING
 fi
 
 echo "$OCSPRESPONSE" | grep -q ": good"
 if [[ $? -eq 0 ]]; then
     echo -n "OK: OCSP up and running - status of certificate for ${CERTCN} GOOD by OCSP: ${OCSPURL} " 
-    exit 0
+    echo $OCSPRESPONSE
+    exit $OK
 fi
 
 echo "$OCSPRESPONSE" | grep -q "unauthorized"
 if [[ $? -eq 0 ]]; then
     echo -n "WARNING: OCSP Responder Error: unauthorized (6) "  
-    exit 1
+    echo $OCSPRESPONSE
+    exit $WARNING
 fi
+
+
+# If we get here, then openssl propably ran with exit code 0, but we did not recognize the output
+echo "Could not parse output from openssl command"
+echo $OCSPRESPONSE
+echo "----"
+echo "Command used: $OPENSSL_COMMAND" 
+exit $UNKNOWN
 
 
