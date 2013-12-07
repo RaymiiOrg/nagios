@@ -31,6 +31,28 @@ UNKNOWN=3
 HOSTNAME=localhost # by default check localhost
 PORT=80 # default port is 80
 
+OPENSSL="openssl" # Command used to invoke openssl
+
+print_help() {
+cat << EOF
+$0 version $VERSION
+This Plugin checks if a remote OCSP server and see if it validates our certificate
+
+Usage: $0 [--help] [-H localhost] [-P 80]
+          [--cert filename.cer]" [--issuer filename.cer]
+          [--noverify] [--max-age AGE]"
+          [--path-to-openssl /usr/bin/openssl]
+          [--url http://\$hostname:\$port]"]
+          [--openssl-command /some/other/command]
+
+Notes:
+  If --url is not specified it is assumed to be http://host_name
+
+Examples:
+ # $0 -H host.example.com -P 80 --issuer issuer.cer --cert cert_to_check.cer
+
+EOF
+}
 # Parse arguments
 while [ $# -gt 0 ]
 do
@@ -53,6 +75,18 @@ do
     ;;
     -P)
       PORT=$2
+      shift 2
+    ;;
+    --path-to-openssl)
+      OPENSSL=$2
+      shift 2
+    ;;
+    --openssl-command)
+      OPENSSL_COMMAND=$2
+      shift 2
+    ;;
+    --url)
+      OCSPURL=$2
       shift 2
     ;;
     --cert)
@@ -84,18 +118,10 @@ do
 done
 
 
-print_help() {
-      echo "$0 version $VERSION"
-      echo "This Plugin checks if a remote OCSP server and see if it validates our certificate"
-      echo ""
-      echo "Usage: $0 [--help] [-H host_name] [--cert filename.cer] [--issuer filename.cer] [--noverify] [--max-age AGE]"
-      echo ""
-}
 
 
-
-OCSPURL="http://$HOSTNAME"
-CERTCN="michal.cert"
+CERTCN=$CERT
+#CERTCN="michal.cert"
 # 
 CERTTOCHECK='-----BEGIN CERTIFICATE-----
 MIIE6TCCA9GgAwIBAgIRAMGj2NANcvzkg82EdZ6ewLwwDQYJKoZIhvcNAQEFBQAw
@@ -165,23 +191,36 @@ if [ -z $CERT ]; then
   trap "rm -f $CERT" EXIT
 fi
 
+# If there is no issuer specified, we use the one that is hardcoded in the script
 if [ -z $ISSUER ]; then
   ISSUER=`mktemp`
   echo "$ISSUERCERT" > $ISSUER
   trap "rm -f $ISSUER" EXIT
 fi
 
+# Fail if certificate file does not exist
 if [ ! -f "$CERT" ]; then
 	echo "Certificate to check not found: $CERT"
 	exit $UNKNOWN
 fi
 
+# Fail if issuer file does not exist
 if [ ! -f "$ISSUER" ]; then
 	echo "Issuer certificate not found: $ISSUER"
 	exit $UNKNOWN
 fi
 
-OPENSSL_COMMAND="openssl ocsp $OPTIONS -nonce -issuer $ISSUER -cert $CERT -url "$OCSPURL" 2>&1"
+# If no URL provided from command line, generate a sensible one from hostname and port
+if [ -z "$OCSPURL" ]; then
+    OCSPURL="http://$HOSTNAME:$PORT"
+fi
+
+# If openssl command was not specified in arguments, then generate a sensible one
+if [ -z "$OPENSSL_COMMAND" ]; then
+	OPENSSL_COMMAND="$OPENSSL ocsp $OPTIONS -nonce -issuer $ISSUER -cert $CERT -url "$OCSPURL" 2>&1"
+fi
+
+# If verbose is specified, print out our actual openssl command
 if [ ! -z $VERBOSE ]; then
   echo "DEBUG: Executing: $OPENSSL_COMMAND"
 fi
@@ -212,8 +251,7 @@ fi
 
 echo "$OCSPRESPONSE" | grep -q ": revoked"
 if [[ $? -eq 0 ]]; then
-
-    echo -n "CRITICAL: certificate for ${CERTCN} REVOKED by OCSP: ${OCSPURL} " 
+    echo -n "CRITICAL: certificate for ${CERTCN} REVOKED by OCSP: ${OCSPURL} "
     echo $OCSPRESPONSE
     exit $CRITICAL
 fi
