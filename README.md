@@ -10,3 +10,4 @@ This is a repo with my nagios plugins.
 - check_dns_zone_sync - simple DNS zone sync check, compares domain Serial from master DNS server to slave DNS servers serial
 - check_ossec_agents - checks an ossec server if there are disconnected agents and list them.
 - AXFR-to-nagios - Simple script which converts a DIG zonetransfer to a nagios HTTP check config file
+- check_updates - simple checks for apt, yum and pacman updates.
