@@ -14,6 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# Mark Ruys <mark.ruys@peercode.nl> - 2015-8-27
+# Changelog: - catch openssl parsing errors
+#            - clean up temporary file on error
+#            - add support for PEM CRL's
+#            - fix message when CRL has been expired
+#            - pretty print duration
+
 # Jeroen Nijhof <jnijhof@digidentity.eu>
 # Changelog: - fixed timezone bug by comparing GMT with GMT
 #            - changed hours to minutes for even more precision
@@ -37,29 +44,55 @@ import tempfile
 import urllib.request, urllib.parse, urllib.error
 
 def check_crl(url, warn, crit):
-    tmpcrl = tempfile.mktemp("crl")
+    tmpcrl = tempfile.mktemp(".crl")
     #request = urllib.request.urlretrieve(url, tmpcrl)
     try:
         urllib.request.urlretrieve(url, tmpcrl)
     except:
-        print ("CRITICAL: CRL could not be retreived: %s" % url)
+        print ("CRITICAL: CRL could not be retrieved: %s" % url)
+        os.remove(tmpcrl)
         sys.exit(2)
 
-    ret = subprocess.check_output(["/usr/bin/openssl", "crl", "-inform", "DER", "-noout", "-nextupdate", "-in", tmpcrl])
+    try:
+        inform = 'DER'
+        crlfile = open(tmpcrl, "r")
+        for line in crlfile:
+            if "BEGIN X509 CRL" in line:
+                inform = 'PEM'
+                break
+        crlfile.close()
+
+        ret = subprocess.check_output(["/usr/bin/openssl", "crl", "-inform", inform, "-noout", "-nextupdate", "-in", tmpcrl], stderr=subprocess.STDOUT)
+    except:
+        print ("UNKNOWN: CRL could not be parsed: %s %s" % url)
+        os.remove(tmpcrl)
+        sys.exit(3)
+
     nextupdate = ret.strip().decode('utf-8').split("=")
     os.remove(tmpcrl)
     eol = time.mktime(time.strptime(nextupdate[1],"%b %d %H:%M:%S %Y GMT"))
     today = time.mktime(datetime.datetime.utcnow().timetuple())
-    seconds = eol - today
-    minutes = int(seconds / 60)
-    if  minutes > crit and minutes <= warn:
-        msg = "WARNING CRL Expires in %s minutes (on %s GMT)" % (minutes, time.asctime(time.localtime(eol)))
+    expires = (eol - today) / 60
+    if abs(expires) < 120:
+        unit = "minutes"
+    elif abs(expires) < 2 * 60:
+        expires /= 60
+        unit = "hours"
+    else:
+        expires /= 60 * 24
+        unit = "days"
+    gmtstr = time.asctime(time.localtime(eol))
+    if expires < 0:
+        msg = "CRITICAL CRL expired %d %s ago (on %s GMT)" % (-expires, unit, gmtstr)
+        exitcode = 2
+    elif  minutes > crit and minutes <= warn:
+        msg = "WARNING CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
         exitcode = 1
     elif minutes <= crit:
-        msg = "CRITICAL CRL Expires in %s minutes (on %s GMT)" % (minutes, time.asctime(time.localtime(eol)))
+        msg = "CRITICAL CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
         exitcode = 2
     else:
-        msg = "OK CRL Expires in %s minutes (on %s GMT)" % (minutes, time.asctime(time.localtime(eol)))
+        msg = "OK CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
         exitcode = 0
 
     print (msg)
