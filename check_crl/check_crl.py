@@ -72,25 +72,26 @@ def check_crl(url, warn, crit):
     os.remove(tmpcrl)
     eol = time.mktime(time.strptime(nextupdate[1],"%b %d %H:%M:%S %Y GMT"))
     today = time.mktime(datetime.datetime.utcnow().timetuple())
-    expires = (eol - today) / 60
-    if abs(expires) < 120:
+    minutes = (eol - today) / 60
+    if abs(minutes) < 4 * 60:
+        expires = minutes
         unit = "minutes"
-    elif abs(expires) < 2 * 60:
-        expires /= 60
+    elif abs(minutes) < 2 * 24 * 60:
+        expires = minutes / 60
         unit = "hours"
     else:
-        expires /= 60 * 24
+        expires = minutes / (24 * 60)
         unit = "days"
     gmtstr = time.asctime(time.localtime(eol))
-    if expires < 0:
+    if minutes < 0:
         msg = "CRITICAL CRL expired %d %s ago (on %s GMT)" % (-expires, unit, gmtstr)
         exitcode = 2
-    elif  minutes > crit and minutes <= warn:
-        msg = "WARNING CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
-        exitcode = 1
     elif minutes <= crit:
         msg = "CRITICAL CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
         exitcode = 2
+    elif minutes <= warn:
+        msg = "WARNING CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
+        exitcode = 1
     else:
         msg = "OK CRL expires in %d %s (on %s GMT)" % (expires, unit, gmtstr)
         exitcode = 0
