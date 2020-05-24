@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # First some variables
-CTC="/opt/PTK/bin/ctcheck"
+CTC="/opt/safenet/protecttoolkit5/ptk/bin/ctcheck"
 CTCOPTS="-N" # no globals
 HSM_NAME=""
 CHECK_TYPE=""
@@ -23,9 +23,10 @@ HSM_GREP='grep -v -e ^# -e ^$'
 HSM_SED='sed s/~//g'
 
 # Make sure we can access everything.
-export PATH=$PATH:/opt/PTK/bin
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/PTK/lib
-export MANPATH=$MANPATH:/opt/PTK/man
+export CPROVDIR=/opt/safenet/protecttoolkit5/ptk
+export PATH=$PATH:$CPROVDIR/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CPROVDIR/lib
+export MANPATH=$MANPATH:$CPROVDIR/man
 
 
 # How should I be used?
@@ -39,7 +40,7 @@ function usage() {
        -h      Show this message
        -t      Check type: "battery", "RAM", "datetime", "eventlog", "initialized", "hsminfo", "fminfo"
        -n      HSM name for \$ET_HSM_NETCLIENT_SERVERLIST.
-       -b      ctcheck binary (default: /opt/PTK/bin/ctcheck)
+       -b      ctcheck binary (default: /opt/safenet/protecttoolkit5/ptk/bin/ctcheck)
 
     CHECKS:
        battery          Show HSM Battery status, GOOD (ok) or LOW (crit)
